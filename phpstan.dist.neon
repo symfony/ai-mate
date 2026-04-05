@@ -9,6 +9,7 @@ parameters:
         - tests/
     excludePaths:
         - src/Bridge/
+        - composer-plugin
     treatPhpDocTypesAsCertain: false
     ignoreErrors:
         -
