@@ -13,6 +13,7 @@ namespace Symfony\AI\Mate\Agent;
 
 use Psr\Log\LoggerInterface;
 use Symfony\AI\Mate\Discovery\ComposerExtensionDiscovery;
+use Symfony\AI\Mate\Discovery\PathGuard;
 
 /**
  * Aggregates agent instructions from all installed extensions.
@@ -86,6 +87,15 @@ final class AgentInstructionsAggregator
             return null;
         }
 
+        if (PathGuard::hasTraversal($instructionsPath)) {
+            $this->logger->warning('Invalid instructions path (contains path traversal)', [
+                'package' => $packageName,
+                'path' => $instructionsPath,
+            ]);
+
+            return null;
+        }
+
         $fullPath = $this->rootDir.'/vendor/'.$packageName.'/'.ltrim($instructionsPath, '/');
 
         return $this->readInstructionsFile($fullPath, $packageName);
@@ -99,6 +109,15 @@ final class AgentInstructionsAggregator
         $instructionsPath = $data['instructions'] ?? null;
 
         if (null === $instructionsPath) {
+            return null;
+        }
+
+        if (PathGuard::hasTraversal($instructionsPath)) {
+            $this->logger->warning('Invalid instructions path (contains path traversal)', [
+                'source' => 'root project',
+                'path' => $instructionsPath,
+            ]);
+
             return null;
         }
 

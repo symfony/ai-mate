@@ -264,7 +264,15 @@ final class ComposerExtensionDiscovery
 
         $validDirs = [];
         foreach ($scanDirs as $dir) {
-            if (!\is_string($dir) || '' === trim($dir) || str_contains($dir, '..')) {
+            if (!\is_string($dir) || '' === trim($dir)) {
+                continue;
+            }
+
+            if (PathGuard::hasTraversal($dir)) {
+                $this->logger->warning('Invalid scan directory (contains path traversal)', [
+                    'package' => $packageName,
+                    'directory' => $dir,
+                ]);
                 continue;
             }
 
@@ -318,7 +326,15 @@ final class ComposerExtensionDiscovery
 
         $validFiles = [];
         foreach ($includes as $file) {
-            if (!\is_string($file) || '' === trim($file) || str_contains($file, '..')) {
+            if (!\is_string($file) || '' === trim($file)) {
+                continue;
+            }
+
+            if (PathGuard::hasTraversal($file)) {
+                $this->logger->warning('Invalid include file (contains path traversal)', [
+                    'package' => $packageName,
+                    'file' => $file,
+                ]);
                 continue;
             }
 
@@ -361,9 +377,8 @@ final class ComposerExtensionDiscovery
             return null;
         }
 
-        // Security: prevent path traversal
-        if (str_contains($agentInstructions, '..')) {
-            $this->logger->warning('Invalid instructions path (contains "..")', [
+        if (PathGuard::hasTraversal($agentInstructions)) {
+            $this->logger->warning('Invalid instructions path (contains path traversal)', [
                 'package' => $packageName,
                 'path' => $agentInstructions,
             ]);
