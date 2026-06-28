@@ -125,7 +125,9 @@ final class ExtensionConfigSynchronizer
 
         foreach ($extensions as $packageName => $config) {
             $enabled = $config['enabled'] ? 'true' : 'false';
-            $content .= "    '$packageName' => ['enabled' => $enabled],\n";
+            // Package names originate from third-party composer.json files and are written into a
+            // PHP file that is later included; var_export() escapes them safely to prevent code injection.
+            $content .= \sprintf("    %s => ['enabled' => %s],\n", var_export($packageName, true), $enabled);
         }
 
         $content .= "];\n";
