@@ -13,6 +13,7 @@ namespace Symfony\AI\Mate\Command;
 
 use HelgeSverre\Toon\Toon;
 use Symfony\AI\Mate\Agent\AgentInstructionsMaterializer;
+use Symfony\AI\Mate\Exception\FileWriteException;
 use Symfony\AI\Mate\Service\FilePermissions;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -41,6 +42,11 @@ class InitCommand extends Command
         'mate/config.php',
     ];
 
+    private const BINARY = 'vendor/bin/mate';
+
+    private string $invocation = self::BINARY;
+    private string $phpVersion = '';
+
     public function __construct(
         private string $rootDir,
         private AgentInstructionsMaterializer $instructionsMaterializer,
@@ -68,6 +74,9 @@ class InitCommand extends Command
 
         $actions = [];
 
+        $this->invocation = $this->askInvocation($io);
+        $this->phpVersion = \PHP_MAJOR_VERSION.'.'.\PHP_MINOR_VERSION;
+
         $mateDir = $this->rootDir.'/mate';
         if (!is_dir($mateDir)) {
             mkdir($mateDir, FilePermissions::DIRECTORY, true);
@@ -80,9 +89,6 @@ class InitCommand extends Command
             'mate/.env',
             'mate/.gitignore',
             'mate/AGENT_INSTRUCTIONS.md',
-            'mcp.json',
-            'bin/codex',
-            'bin/codex.bat',
         ];
         foreach ($files as $file) {
             $fullPath = $this->rootDir.'/'.$file;
@@ -90,7 +96,7 @@ class InitCommand extends Command
                 $this->copyTemplate($file, $fullPath);
                 $this->postCopyTemplateAction($file, $fullPath);
                 $actions[] = ['✓', 'Created', $file];
-            } elseif ($io->confirm(\sprintf('<question>%s already exists. Overwrite?</question>', $fullPath), false)) {
+            } elseif ($io->confirm(\sprintf('<question>%s already exists. Replace it with the template, discarding its current content?</question>', $fullPath), false)) {
                 unlink($fullPath);
                 $this->copyTemplate($file, $fullPath);
                 $this->postCopyTemplateAction($file, $fullPath);
@@ -100,44 +106,11 @@ class InitCommand extends Command
             }
         }
 
-        // Only prompt when the freshly written mcp.json still carries the
-        // placeholders; a kept existing file has nothing left to configure.
-        $mcpJsonPath = $this->rootDir.'/mcp.json';
-        if ($this->mcpJsonNeedsPhpBinary($mcpJsonPath)) {
-            $phpBinary = $this->resolvePhpBinary($io);
-            $this->applyPhpBinaryToMcpJson($mcpJsonPath, $phpBinary);
-            $actions[] = ['✓', 'Configured', \sprintf('mcp.json launch command ("%s")', $phpBinary)];
-        }
-
-        // Create symlink from .mcp.json to mcp.json for compatibility
-        $mcpJsonSymlink = $this->rootDir.'/.mcp.json';
-        if (file_exists($mcpJsonPath)) {
-            if (is_link($mcpJsonSymlink)) {
-                unlink($mcpJsonSymlink);
-            }
-            if (!file_exists($mcpJsonSymlink)) {
-                if (@symlink('mcp.json', $mcpJsonSymlink)) {
-                    $actions[] = ['✓', 'Created', '.mcp.json (symlink to mcp.json)'];
-                } else {
-                    $actions[] = ['⚠', 'Warning', 'Could not create .mcp.json symlink (symlink failed). You may need to manually copy mcp.json to .mcp.json'];
-                }
-            } elseif ($io->confirm(\sprintf('<question>%s already exists. Replace with symlink?</question>', $mcpJsonSymlink), false)) {
-                unlink($mcpJsonSymlink);
-                if (@symlink('mcp.json', $mcpJsonSymlink)) {
-                    $actions[] = ['✓', 'Updated', '.mcp.json (symlink to mcp.json)'];
-                } else {
-                    $actions[] = ['⚠', 'Warning', 'Could not create .mcp.json symlink (symlink failed). You may need to manually copy mcp.json to .mcp.json'];
-                }
-            } else {
-                $actions[] = ['○', 'Skipped', '.mcp.json (already exists)'];
-            }
-        }
-
         $mateSrcDir = $this->rootDir.'/mate/src';
         if (!is_dir($mateSrcDir)) {
             mkdir($mateSrcDir, FilePermissions::DIRECTORY, true);
             file_put_contents($mateSrcDir.'/.gitignore', '');
-            $actions[] = ['✓', 'Created', 'mate/src/ directory (for custom MCP tools)'];
+            $actions[] = ['✓', 'Created', 'mate/src/ directory (for custom tools)'];
         } else {
             $actions[] = ['○', 'Exists', 'mate/src/ directory'];
         }
@@ -145,11 +118,20 @@ class InitCommand extends Command
         $composerActions = $this->updateComposerJson();
         $actions = array_merge($actions, $composerActions);
 
-        $materializationResult = $this->instructionsMaterializer->synchronizeFromCurrentInstructionsFile();
+        // The container was built before mate/config.php existed, so hand the answer in directly.
+        $materializationResult = $this->instructionsMaterializer
+            ->withInvocation($this->invocation, $this->phpVersion)
+            ->synchronizeFromCurrentInstructionsFile();
         if ($materializationResult['agents_file_updated']) {
             $actions[] = ['✓', 'Updated', 'AGENTS.md (AI Mate managed instructions block)'];
         } else {
             $actions[] = ['⚠', 'Warning', 'Could not update AGENTS.md managed instructions block'];
+        }
+
+        if ($materializationResult['claude_file_updated']) {
+            $actions[] = ['✓', 'Updated', 'CLAUDE.md (imports AGENTS.md for Claude Code)'];
+        } else {
+            $actions[] = ['⚠', 'Warning', 'Could not update CLAUDE.md to import AGENTS.md'];
         }
 
         $io->section('Summary');
@@ -160,8 +142,9 @@ class InitCommand extends Command
         $io->comment([
             'Next steps:',
             '  1. Run "composer dump-autoload" to register the Mate\\ autoloader',
-            '  2. Add custom MCP tools/resources/prompts to mate/src/',
-            '  3. Run your preferred coding agent (e.g. Claude Code) — it picks up the generated mcp.json; for Codex, use "./bin/codex"',
+            '  2. Add custom tools to mate/src/ (public methods with the #[MateTool] attribute)',
+            '  3. Point your coding agent at the CLI; it reads mate/AGENT_INSTRUCTIONS.md and runs',
+            \sprintf('     "%s tools:list", "tools:inspect <tool>" and "tools:call <tool> --<param>=<value>"', $this->invocation),
         ]);
 
         if (!class_exists(Toon::class)) {
@@ -183,10 +166,10 @@ class InitCommand extends Command
 
     private function postCopyTemplateAction(string $template, string $destination): void
     {
-        if ('bin/codex' === $template) {
-            chmod($destination, FilePermissions::EXECUTABLE);
-
-            return;
+        // Both templates name the command the agent has to type, and AGENTS.md is about to
+        // promise that same command. A stale `vendor/bin/mate` here would contradict it.
+        if (\in_array($template, ['mate/config.php', 'mate/AGENT_INSTRUCTIONS.md'], true)) {
+            $this->fillPlaceholders($destination);
         }
 
         // Restrict files that may contain secrets or local configuration so they are not
@@ -197,55 +180,58 @@ class InitCommand extends Command
     }
 
     /**
-     * PHP binary the agent uses to launch Mate, defaulted by environment
-     * detection (containers such as DDEV need a wrapper) and confirmed by the user.
+     * Asks how the coding agent should invoke Mate, defaulting to a container prefix when the
+     * project looks containerized. Running Mate on the host of a containerized application
+     * reports on the wrong runtime, and extensions may then behave differently too.
      */
-    private function resolvePhpBinary(SymfonyStyle $io): string
+    private function askInvocation(SymfonyStyle $io): string
     {
-        $default = is_dir($this->rootDir.'/.ddev') ? 'ddev exec php' : 'php';
+        $default = is_dir($this->rootDir.'/.ddev') ? 'ddev exec '.self::BINARY : self::BINARY;
 
-        return trim($io->ask('PHP binary to run Mate for your coding agent', $default) ?? $default);
+        $answer = $io->ask(\sprintf('Which command should your coding agent use to run Mate? A wrapper alone ("symfony php", "ddev exec") is enough, "%s" is appended', self::BINARY), $default);
+
+        if (!\is_string($answer) || '' === trim($answer)) {
+            return $default;
+        }
+
+        return $this->completeInvocation(trim($answer));
     }
 
     /**
-     * Whether the mcp.json at the given path still holds the unresolved
-     * placeholders, i.e. it was just written from the template this run.
+     * Accepts a full command as well as a bare wrapper, so that "symfony php" is not materialized
+     * as "symfony php tools:list", which names no binary at all.
      */
-    private function mcpJsonNeedsPhpBinary(string $mcpJsonPath): bool
+    private function completeInvocation(string $answer): string
     {
-        $contents = @file_get_contents($mcpJsonPath);
+        $tokens = preg_split('/\s+/', $answer);
+        if (false === $tokens || [] === $tokens) {
+            return self::BINARY;
+        }
 
-        return \is_string($contents) && str_contains($contents, '##PHP_BINARY##');
+        $last = (string) end($tokens);
+        if (str_contains(basename($last), 'mate')) {
+            return $answer;
+        }
+
+        return $answer.' '.self::BINARY;
     }
 
-    /**
-     * Replace the mcp.json placeholders with the PHP binary. A multi-word binary
-     * (e.g. "ddev exec php") is split into the command and its leading args.
-     */
-    private function applyPhpBinaryToMcpJson(string $mcpJsonPath, string $phpBinary): void
+    private function fillPlaceholders(string $destination): void
     {
-        $parts = preg_split('/\s+/', trim($phpBinary), -1, \PREG_SPLIT_NO_EMPTY);
-        $contents = file_get_contents($mcpJsonPath);
-        if (false === $parts || [] === $parts || false === $contents) {
+        $contents = @file_get_contents($destination);
+        if (false === $contents) {
             return;
         }
 
-        $command = array_shift($parts);
-        $args = [...$parts, './vendor/bin/mate', 'serve', '--force-keep-alive'];
-        $encodedArgs = implode(', ', array_map(
-            static fn (string $arg): string => json_encode($arg, \JSON_UNESCAPED_SLASHES),
-            $args
-        ));
-
-        // The args placeholder is quoted in the template so it stays valid JSON;
-        // the encoded fragment brings its own quotes, so the quotes are replaced too.
         $contents = str_replace(
-            ['##PHP_BINARY##', '"##MATE_ARGS##"'],
-            [$command, $encodedArgs],
-            $contents
+            ['##MATE_INVOCATION##', "'##MATE_PHP_VERSION##'"],
+            [$this->invocation, "'".$this->phpVersion."'"],
+            $contents,
         );
 
-        file_put_contents($mcpJsonPath, $contents);
+        if (false === @file_put_contents($destination, $contents)) {
+            throw new FileWriteException(\sprintf('Failed to write "%s".', $destination));
+        }
     }
 
     /**

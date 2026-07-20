@@ -11,15 +11,12 @@
 
 namespace Symfony\AI\Mate;
 
-use Mcp\Server\Transport\Stdio\RunnerControl;
-use Mcp\Server\Transport\Stdio\RunnerState;
 use Symfony\AI\Mate\Command\ClearCacheCommand;
 use Symfony\AI\Mate\Command\DebugCapabilitiesCommand;
 use Symfony\AI\Mate\Command\DebugExtensionsCommand;
 use Symfony\AI\Mate\Command\DiscoverCommand;
 use Symfony\AI\Mate\Command\InitCommand;
 use Symfony\AI\Mate\Command\ResourcesReadCommand;
-use Symfony\AI\Mate\Command\ServeCommand;
 use Symfony\AI\Mate\Command\SkillsDisableCommand;
 use Symfony\AI\Mate\Command\SkillsEnableCommand;
 use Symfony\AI\Mate\Command\SkillsInstallCommand;
@@ -28,11 +25,11 @@ use Symfony\AI\Mate\Command\SkillsOverrideCommand;
 use Symfony\AI\Mate\Command\SkillsPruneCommand;
 use Symfony\AI\Mate\Command\SkillsResetCommand;
 use Symfony\AI\Mate\Command\SkillsValidateCommand;
-use Symfony\AI\Mate\Command\StopCommand;
 use Symfony\AI\Mate\Command\ToolsCallCommand;
 use Symfony\AI\Mate\Command\ToolsInspectCommand;
 use Symfony\AI\Mate\Command\ToolsListCommand;
 use Symfony\AI\Mate\Exception\UnsupportedVersionException;
+use Symfony\AI\Mate\Runtime\PhpVersionGuard;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -46,15 +43,17 @@ final class App
     public const NAME = 'Symfony AI Mate';
     public const VERSION = '0.12.0';
 
-    public static function build(ContainerInterface $container): Application
+    public static function build(ContainerInterface $container, ?string $commandName = null): Application
     {
+        $guard = $container->get(PhpVersionGuard::class);
+        \assert($guard instanceof PhpVersionGuard);
+        $guard->assertMatches($commandName);
+
         $application = new Application(self::NAME, self::VERSION);
 
         $commands = [
             InitCommand::class,
-            ServeCommand::class,
             DiscoverCommand::class,
-            StopCommand::class,
             DebugCapabilitiesCommand::class,
             DebugExtensionsCommand::class,
             ClearCacheCommand::class,
@@ -80,12 +79,6 @@ final class App
             );
 
             self::addCommand($application, $command);
-        }
-
-        if (\defined('SIGUSR1') && class_exists(RunnerControl::class)) {
-            $application->getSignalRegistry()->register(\SIGUSR1, static function () {
-                RunnerControl::$state = RunnerState::STOP;
-            });
         }
 
         return $application;

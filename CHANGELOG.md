@@ -15,6 +15,10 @@ CHANGELOG
  * Add `--dry-run` to `skills:install`, reporting what the run would install, rebuild or remove without writing anything
  * Add content checks to `skills:validate`: a warning when SKILL.md links to a file that is not part of the installed skill (failing `--strict` like any other warning), and suggestions when a description is shorter than 40 characters or never says when the skill applies (printed only, never changing the exit code, not even with `--strict`)
  * Add `skills:disable` and `skills:enable` commands: flip `enabled` for a single skill and rebuild or remove its generated folders
+ * Add a managed `CLAUDE.md` in the project root to `mate init`/`mate discover` that imports `AGENTS.md` via `@AGENTS.md`, so Claude Code discovers the Mate CLI instructions it would otherwise never read
+ * Replace the MCP server with a native CLI: Mate no longer depends on `mcp/sdk`, the `serve` and `stop` commands and the MCP runtime are gone, and `mate init` writes CLI-oriented agent instructions instead of `mcp.json`/`.mcp.json` and the Codex wrappers. Tools and resources are discovered by reflection from the native `#[MateTool]`, `#[MateResource]` and `#[MateResourceTemplate]` attributes in `Symfony\AI\Mate\Attribute`; prompts have no native equivalent and are removed along with `debug:capabilities --type=prompt`
+ * Rename the tool/resource commands from `mcp:tools:*`/`mcp:resources:read` to `tools:list`, `tools:inspect`, `tools:call` and `resources:read`, and change `tools:call` to take tool parameters as long options (`tools:call symfony-profiler-list --limit=1`, repeated for variadic parameters) with `--json` for nested values, replacing the positional JSON argument
+ * Add `mate.invocation` and `mate.php_version` to `mate/config.php`: `mate init` asks how the coding agent should invoke Mate (defaulting to `ddev exec vendor/bin/mate` when a `.ddev/` directory is present), materializes that command into the agent instructions, and Mate refuses to start under a different PHP major.minor (`init`, `list`, `help` and `completion` warn instead of refusing)
 
 0.12
 ----
