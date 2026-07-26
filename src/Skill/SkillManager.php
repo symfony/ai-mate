@@ -124,6 +124,31 @@ final class SkillManager
         $this->repository->setMode($package, $name, $mode);
     }
 
+    public function setEnabled(string $package, string $name, bool $enabled): void
+    {
+        $this->repository->setEnabled($package, $name, $enabled);
+    }
+
+    /**
+     * Reads the recorded "enabled" flag of a single skill.
+     *
+     * Deliberately not SkillStatus::$enabled: that one is the effective value, false as soon as the
+     * owning extension is disabled. A command that writes this flag has to compare against the flag
+     * itself, or it would call a skill "already disabled" when only its extension is.
+     *
+     * @return bool|null null when the package records no such skill
+     */
+    public function isEnabled(string $package, string $name): ?bool
+    {
+        foreach ($this->repository->findAll($name) as $match) {
+            if ($match['package'] === $package) {
+                return $match['state']['enabled'];
+            }
+        }
+
+        return null;
+    }
+
     public function overrideCopyPath(string $name): string
     {
         return SkillInstaller::OVERRIDE_SKILLS_DIR.'/'.$name;

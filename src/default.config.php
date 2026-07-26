@@ -21,6 +21,8 @@ use Symfony\AI\Mate\Command\DiscoverCommand;
 use Symfony\AI\Mate\Command\InitCommand;
 use Symfony\AI\Mate\Command\ResourcesReadCommand;
 use Symfony\AI\Mate\Command\ServeCommand;
+use Symfony\AI\Mate\Command\SkillsDisableCommand;
+use Symfony\AI\Mate\Command\SkillsEnableCommand;
 use Symfony\AI\Mate\Command\SkillsInstallCommand;
 use Symfony\AI\Mate\Command\SkillsListCommand;
 use Symfony\AI\Mate\Command\SkillsOverrideCommand;
@@ -173,6 +175,12 @@ return static function (ContainerConfigurator $container): void {
             ->public()
 
         ->set(SkillsResetCommand::class)
+            ->public()
+
+        ->set(SkillsEnableCommand::class)
+            ->public()
+
+        ->set(SkillsDisableCommand::class)
             ->public()
     ;
 };

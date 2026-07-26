@@ -51,6 +51,8 @@ bin/mate skills:validate                    # Check generated folders and conten
 bin/mate skills:prune                       # Remove leftover generated mate-* folders
 bin/mate skills:override mate-system-information  # Copy into mate/skills/ and own it
 bin/mate skills:reset mate-system-information     # Hand it back to Mate
+bin/mate skills:disable mate-system-information   # Hide it from coding agents
+bin/mate skills:enable mate-system-information    # Show it again
 bin/mate serve                              # Start MCP server
 bin/mate clear-cache                        # Clear cache
 

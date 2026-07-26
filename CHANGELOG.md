@@ -13,6 +13,7 @@ CHANGELOG
  * Add `skills:override` and `skills:reset` commands: take ownership of a skill by copying it into `mate/skills/<name>/`, and hand it back to Mate again
  * Add `--dry-run` to `skills:install`, reporting what the run would install, rebuild or remove without writing anything
  * Add content checks to `skills:validate`: a warning when SKILL.md links to a file that is not part of the installed skill (failing `--strict` like any other warning), and suggestions when a description is shorter than 40 characters or never says when the skill applies (printed only, never changing the exit code, not even with `--strict`)
+ * Add `skills:disable` and `skills:enable` commands: flip `enabled` for a single skill and rebuild or remove its generated folders
 
 0.12
 ----
