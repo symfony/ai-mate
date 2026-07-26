@@ -23,7 +23,9 @@ use Symfony\AI\Mate\Command\ResourcesReadCommand;
 use Symfony\AI\Mate\Command\ServeCommand;
 use Symfony\AI\Mate\Command\SkillsInstallCommand;
 use Symfony\AI\Mate\Command\SkillsListCommand;
+use Symfony\AI\Mate\Command\SkillsOverrideCommand;
 use Symfony\AI\Mate\Command\SkillsPruneCommand;
+use Symfony\AI\Mate\Command\SkillsResetCommand;
 use Symfony\AI\Mate\Command\SkillsValidateCommand;
 use Symfony\AI\Mate\Command\StopCommand;
 use Symfony\AI\Mate\Command\ToolsCallCommand;
@@ -165,6 +167,12 @@ return static function (ContainerConfigurator $container): void {
             ->public()
 
         ->set(SkillsPruneCommand::class)
+            ->public()
+
+        ->set(SkillsOverrideCommand::class)
+            ->public()
+
+        ->set(SkillsResetCommand::class)
             ->public()
     ;
 };

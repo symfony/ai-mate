@@ -39,6 +39,7 @@ final class SkillInstaller
 {
     public const AGENTS_SKILLS_DIR = '.agents/skills';
     public const CLAUDE_SKILLS_DIR = '.claude/skills';
+    public const OVERRIDE_SKILLS_DIR = 'mate/skills';
 
     public function __construct(
         private string $rootDir,
@@ -106,7 +107,7 @@ final class SkillInstaller
                     'mode' => $state['mode'],
                 ]);
                 $skipped[$skill->installedName] = $override
-                    ? 'override source missing in mate/skills/'
+                    ? \sprintf('override source missing in %s/', self::OVERRIDE_SKILLS_DIR)
                     : 'source directory missing';
 
                 continue;
@@ -280,7 +281,7 @@ final class SkillInstaller
         $agentsTarget = $this->rootDir.'/'.self::AGENTS_SKILLS_DIR.'/'.$skill->installedName;
         $claudeTarget = $this->rootDir.'/'.self::CLAUDE_SKILLS_DIR.'/'.$skill->installedName;
 
-        $source = $override ? 'mate/skills/'.$skill->originalName : $skill->source;
+        $source = $override ? self::OVERRIDE_SKILLS_DIR.'/'.$skill->originalName : $skill->source;
         $sourceHash = $this->hasher->hash($sourceDir);
 
         $facts = [
@@ -340,7 +341,7 @@ final class SkillInstaller
 
     private function overrideSourceDir(DiscoveredSkill $skill): string
     {
-        return $this->rootDir.'/mate/skills/'.$skill->originalName;
+        return $this->rootDir.'/'.self::OVERRIDE_SKILLS_DIR.'/'.$skill->originalName;
     }
 
     /**
