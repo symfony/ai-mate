@@ -45,8 +45,9 @@ cd ../../.. && vendor/bin/php-cs-fixer fix src/mate/
 bin/mate init                               # Initialize configuration
 bin/mate discover                           # Discover extensions (also installs extension skills)
 bin/mate skills:install                     # Install extension skills
+bin/mate skills:install --dry-run           # Report what an install would change
 bin/mate skills:list                        # List skills with mode, state and status
-bin/mate skills:validate                    # Check generated folders against recorded state
+bin/mate skills:validate                    # Check generated folders and content against recorded state
 bin/mate skills:prune                       # Remove leftover generated mate-* folders
 bin/mate skills:override mate-system-information  # Copy into mate/skills/ and own it
 bin/mate skills:reset mate-system-information     # Hand it back to Mate

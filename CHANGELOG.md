@@ -11,6 +11,8 @@ CHANGELOG
  * Add `skills:validate` command: checks the generated folders against the recorded state and fails on hand-edited content, missing folders or a mispointed mirror (`--strict` also fails on warnings)
  * Add `skills:prune` command: removes generated `mate-*` folders that no longer belong to any skill (`--dry-run` to preview)
  * Add `skills:override` and `skills:reset` commands: take ownership of a skill by copying it into `mate/skills/<name>/`, and hand it back to Mate again
+ * Add `--dry-run` to `skills:install`, reporting what the run would install, rebuild or remove without writing anything
+ * Add content checks to `skills:validate`: a warning when SKILL.md links to a file that is not part of the installed skill (failing `--strict` like any other warning), and suggestions when a description is shorter than 40 characters or never says when the skill applies (printed only, never changing the exit code, not even with `--strict`)
 
 0.12
 ----

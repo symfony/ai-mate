@@ -34,6 +34,19 @@ use Symfony\Component\Filesystem\Filesystem;
  */
 final class SkillManager
 {
+    /**
+     * Below this, a description cannot carry both what the skill does and when it applies.
+     */
+    private const MIN_DESCRIPTION_LENGTH = 40;
+
+    /**
+     * Words a description uses to name the situation it applies to.
+     *
+     * Deliberately generous: the check is a nudge, not a gate, so "Use this for deploying" passes
+     * on the same footing as "Use when deploying".
+     */
+    private const USAGE_CUE_PATTERN = '/\b(when|whenever|if|before|after|while|during|unless|once)\b|\buse (this|it)\b/i';
+
     public function __construct(
         private string $rootDir,
         private ComposerExtensionDiscovery $extensionDiscovery,
@@ -57,9 +70,9 @@ final class SkillManager
         return $this->skillDiscovery->discover($extensions);
     }
 
-    public function reinstall(): SkillInstallResult
+    public function reinstall(bool $dryRun = false): SkillInstallResult
     {
-        return $this->installer->install($this->discover());
+        return $this->installer->install($this->discover(), $dryRun);
     }
 
     /**
@@ -359,6 +372,78 @@ final class SkillManager
             $issues[] = ['level' => 'error', 'message' => \sprintf('Installed SKILL.md does not declare "name: %s".', $installedName)];
         }
 
+        return array_merge(
+            $issues,
+            $this->collectDescriptionIssues($frontmatter['description'] ?? ''),
+            $this->collectReferenceIssues($agentsTarget, $content),
+        );
+    }
+
+    /**
+     * Checks the description an agent decides from, before it ever opens the skill.
+     *
+     * Both findings are suggestions, and deliberately never fail a run: a description that never
+     * says when the skill applies makes the agent guess, but length and wording are heuristics
+     * tuned for English prose, and a correct description can miss both and still read well.
+     *
+     * @return list<SkillIssue>
+     */
+    private function collectDescriptionIssues(string $description): array
+    {
+        if ('' === $description) {
+            return [];
+        }
+
+        $issues = [];
+
+        if (mb_strlen($description) < self::MIN_DESCRIPTION_LENGTH) {
+            $issues[] = ['level' => 'suggestion', 'message' => \sprintf('Description is only %d characters long; an agent picks the skill from it alone.', mb_strlen($description))];
+        }
+
+        if (1 !== preg_match(self::USAGE_CUE_PATTERN, $description)) {
+            $issues[] = ['level' => 'suggestion', 'message' => 'Description does not say when to use the skill; name the situation it applies to, as in "Use when the tests fail" or "Use this for deploying".'];
+        }
+
+        return $issues;
+    }
+
+    /**
+     * Checks that the files SKILL.md links to came along into the installed folder.
+     *
+     * A skill folder is self-contained by design, so a relative link that resolves to nothing is a
+     * dead end for the agent following it. Only inline Markdown links are inspected: a path
+     * mentioned in prose is as likely to name a file in the user's project as one in the skill.
+     *
+     * @return list<SkillIssue>
+     */
+    private function collectReferenceIssues(string $agentsTarget, string $content): array
+    {
+        preg_match_all('/\[[^\]]*\]\(([^)\s]+)\)/', $content, $matches);
+
+        /** @var list<string> $missing */
+        $missing = [];
+        foreach ($matches[1] as $target) {
+            $path = explode('#', explode('?', trim($target, '<>'))[0])[0];
+            if ('' === $path) {
+                continue;
+            }
+
+            // Anything addressable on its own: URLs, mail links, and paths anchored at the project root.
+            if (str_starts_with($path, '/') || 1 === preg_match('#^[a-z][a-z0-9+.-]*:#i', $path)) {
+                continue;
+            }
+
+            $path = rawurldecode($path);
+            if (!file_exists($agentsTarget.'/'.$path) && !\in_array($path, $missing, true)) {
+                $missing[] = $path;
+            }
+        }
+
+        $issues = [];
+        foreach ($missing as $path) {
+            $issues[] = ['level' => 'warning', 'message' => \sprintf('SKILL.md links to "%s", which is not part of the installed skill.', $path)];
+        }
+
         return $issues;
     }
 
@@ -383,8 +468,11 @@ final class SkillManager
             return 'not installed';
         }
 
-        if ([] !== $issues) {
-            return 'stale';
+        // Suggestions are advice about the authored content, not drift, so they leave a skill "ok".
+        foreach ($issues as $issue) {
+            if ('warning' === $issue['level']) {
+                return 'stale';
+            }
         }
 
         return 'ok';

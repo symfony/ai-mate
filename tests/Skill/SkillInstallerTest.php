@@ -46,7 +46,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testManagedSkillIsCopiedAndRecordsFacts()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
 
         $result = $this->installer()->install($this->discover());
 
@@ -75,7 +75,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testFrontmatterNameIsRewrittenToInstalledName()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
 
         $this->installer()->install($this->discover());
 
@@ -91,7 +91,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testReinstallIsIdempotent()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
 
         $this->installer()->install($this->discover());
         $afterFirst = file_get_contents($this->rootDir.'/mate/extensions.php');
@@ -106,7 +106,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testHandEditedTargetIsRebuilt()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.', 'ORIGINAL');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.', 'ORIGINAL');
         $this->installer()->install($this->discover());
 
         $installedFile = $this->rootDir.'/.agents/skills/mate-system-information/SKILL.md';
@@ -123,11 +123,11 @@ final class SkillInstallerTest extends TestCase
     public function testSourceChangeTriggersRebuild()
     {
         $skillsDir = $this->rootDir.'/vendor/vendor/pkg-a/skills';
-        $this->createSkill($skillsDir, 'system-information', 'System info.', 'FIRST');
+        $this->createSkill($skillsDir, 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.', 'FIRST');
         $this->installer()->install($this->discover());
         $firstHash = $this->state('vendor/pkg-a', 'system-information')['source_hash'];
 
-        $this->createSkill($skillsDir, 'system-information', 'System info.', 'SECOND');
+        $this->createSkill($skillsDir, 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.', 'SECOND');
         $this->installer()->install($this->discover());
 
         $content = file_get_contents($this->rootDir.'/.agents/skills/mate-system-information/SKILL.md');
@@ -138,7 +138,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testClaudeMirrorFallsBackToCopyWhenLinkerFails()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
 
         $result = $this->installer(new FailingLinker())->install($this->discover());
 
@@ -152,7 +152,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testMirrorPointingElsewhereIsRelinked()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
         $this->installer()->install($this->discover());
 
         mkdir($this->rootDir.'/elsewhere', 0777, true);
@@ -167,7 +167,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testVanishedSkillIsAutoPruned()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
         $this->installer()->install($this->discover());
 
         $this->removeDirectory($this->rootDir.'/vendor/vendor/pkg-a');
@@ -185,7 +185,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testDisabledSkillRemovesTargetsAndRecordsDisabledState()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
         $this->installer()->install($this->discover());
 
         (new SkillStateRepository($this->rootDir))->setEnabled('vendor/pkg-a', 'system-information', false);
@@ -204,7 +204,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testDisabledExtensionKeepsSkillOutOfGeneratedFolders()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
         (new SkillStateRepository($this->rootDir))->write(['vendor/pkg-a' => ['enabled' => false]]);
 
         $result = $this->installer()->install($this->discover());
@@ -215,8 +215,8 @@ final class SkillInstallerTest extends TestCase
 
     public function testOverrideBuildsFromUserCopyAndLeavesItUntouched()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Vendor body.', 'VENDOR CONTENT');
-        $this->createSkill($this->rootDir.'/mate/skills', 'system-information', 'Overridden.', 'OVERRIDE CONTENT');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the vendor skill when diagnosing a version-specific problem.', 'VENDOR CONTENT');
+        $this->createSkill($this->rootDir.'/mate/skills', 'system-information', 'Inspect the overridden skill when diagnosing a version-specific problem.', 'OVERRIDE CONTENT');
         (new SkillStateRepository($this->rootDir))->setMode('vendor/pkg-a', 'system-information', 'override');
 
         $result = $this->installer()->install($this->discover());
@@ -241,7 +241,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testOverrideWithMissingUserCopyIsSkipped()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Vendor body.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the vendor skill when diagnosing a version-specific problem.');
         (new SkillStateRepository($this->rootDir))->setMode('vendor/pkg-a', 'system-information', 'override');
 
         $result = $this->installer()->install($this->discover());
@@ -252,7 +252,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testGitignoreIsLeftAlone()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
         file_put_contents($this->rootDir.'/.gitignore', "/vendor/\n");
 
         $this->installer()->install($this->discover());
@@ -263,7 +263,7 @@ final class SkillInstallerTest extends TestCase
 
     public function testStraysArePrunedOnInstall()
     {
-        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'System info.');
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
         mkdir($this->rootDir.'/.agents/skills/mate-left-over', 0777, true);
         mkdir($this->rootDir.'/.agents/skills/my-own-skill', 0777, true);
 

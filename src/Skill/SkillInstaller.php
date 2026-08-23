@@ -53,9 +53,15 @@ final class SkillInstaller
     }
 
     /**
+     * Reconciles the generated folders with source and intent.
+     *
+     * With $dryRun the run reports the same outcome without touching the filesystem or
+     * mate/extensions.php, so "what would change" is answered by the reconciler itself instead of a
+     * second code path that can drift from it.
+     *
      * @param list<DiscoveredSkill> $skills
      */
-    public function install(array $skills): SkillInstallResult
+    public function install(array $skills, bool $dryRun = false): SkillInstallResult
     {
         $config = $this->repository->read();
 
@@ -64,11 +70,12 @@ final class SkillInstaller
             $discovered[$skill->package][$skill->originalName] = $skill;
         }
 
-        $vanished = $this->dropVanished($config, $discovered);
+        $vanished = $this->dropVanished($config, $discovered, $dryRun);
         $config = $vanished['config'];
         $removed = $vanished['removed'];
 
         $installed = [];
+        $updated = [];
         $skipped = [];
         $notices = [];
         $states = [];
@@ -81,7 +88,7 @@ final class SkillInstaller
             $enabled = $config[$skill->package]['enabled'] && $state['enabled'];
 
             if (!$enabled) {
-                if ($this->removeTargets($skill->installedName, $state['targets'] ?? [])) {
+                if ($this->removeTargets($skill->installedName, $state['targets'] ?? [], $dryRun)) {
                     $removed[] = $skill->installedName;
                 }
 
@@ -115,7 +122,7 @@ final class SkillInstaller
 
             $wasInstalled = isset($state['state']) && 'disabled' !== $state['state'];
 
-            $build = $this->buildSkill($skill, $sourceDir, $override, $state);
+            $build = $this->buildSkill($skill, $sourceDir, $override, $state, $dryRun);
             if (null !== $build['notice']) {
                 $notices[] = $build['notice'];
             }
@@ -127,17 +134,21 @@ final class SkillInstaller
 
             if (!$wasInstalled) {
                 $installed[] = $skill->installedName;
+            } elseif ($build['changed']) {
+                $updated[] = $skill->installedName;
             }
         }
 
-        $this->repository->write($config);
+        if (!$dryRun) {
+            $this->repository->write($config);
+        }
 
-        $removed = array_merge($removed, $this->pruneStrays(false));
+        $removed = array_merge($removed, $this->pruneStrays($dryRun));
         $removed = array_values(array_unique($removed));
         sort($removed);
         sort($active);
 
-        return new SkillInstallResult($installed, $removed, $skipped, $active, $notices, $states);
+        return new SkillInstallResult($installed, $updated, $removed, $skipped, $active, $notices, $states);
     }
 
     /**
@@ -226,7 +237,7 @@ final class SkillInstaller
      *
      * @return array{config: ExtensionConfigMap, removed: list<string>}
      */
-    private function dropVanished(array $config, array $discovered): array
+    private function dropVanished(array $config, array $discovered, bool $dryRun): array
     {
         $removed = [];
         foreach ($config as $package => $entry) {
@@ -235,7 +246,7 @@ final class SkillInstaller
                     continue;
                 }
 
-                if ($this->removeTargets('mate-'.$name, $state['targets'] ?? [])) {
+                if ($this->removeTargets('mate-'.$name, $state['targets'] ?? [], $dryRun)) {
                     $removed[] = 'mate-'.$name;
                 }
 
@@ -274,9 +285,10 @@ final class SkillInstaller
      * @return array{
      *     facts: array{state: 'managed'|'override', source: string, source_hash: string|null, hash: string|null, targets: list<string>},
      *     notice: string|null,
+     *     changed: bool,
      * }
      */
-    private function buildSkill(DiscoveredSkill $skill, string $sourceDir, bool $override, array $previous): array
+    private function buildSkill(DiscoveredSkill $skill, string $sourceDir, bool $override, array $previous, bool $dryRun): array
     {
         $agentsTarget = $this->rootDir.'/'.self::AGENTS_SKILLS_DIR.'/'.$skill->installedName;
         $claudeTarget = $this->rootDir.'/'.self::CLAUDE_SKILLS_DIR.'/'.$skill->installedName;
@@ -297,7 +309,13 @@ final class SkillInstaller
         if ($this->isUpToDate($previous, $sourceHash, $agentsTarget, $skill->installedName)) {
             $facts['hash'] = $previous['hash'] ?? null;
 
-            return ['facts' => $facts, 'notice' => null];
+            return ['facts' => $facts, 'notice' => null, 'changed' => false];
+        }
+
+        if ($dryRun) {
+            $facts['hash'] = $previous['hash'] ?? null;
+
+            return ['facts' => $facts, 'notice' => null, 'changed' => true];
         }
 
         $this->filesystem->remove($agentsTarget);
@@ -311,7 +329,7 @@ final class SkillInstaller
 
         $facts['hash'] = $this->hasher->hash($agentsTarget);
 
-        return ['facts' => $facts, 'notice' => $notice];
+        return ['facts' => $facts, 'notice' => $notice, 'changed' => true];
     }
 
     /**
@@ -347,7 +365,7 @@ final class SkillInstaller
     /**
      * @param list<string> $recordedTargets
      */
-    private function removeTargets(string $installedName, array $recordedTargets): bool
+    private function removeTargets(string $installedName, array $recordedTargets, bool $dryRun): bool
     {
         $targets = $recordedTargets;
         $targets[] = self::AGENTS_SKILLS_DIR.'/'.$installedName;
@@ -360,7 +378,9 @@ final class SkillInstaller
                 $anyRemoved = true;
             }
 
-            $this->filesystem->remove($path);
+            if (!$dryRun) {
+                $this->filesystem->remove($path);
+            }
         }
 
         return $anyRemoved;
