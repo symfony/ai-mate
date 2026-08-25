@@ -4,6 +4,7 @@ CHANGELOG
 0.13
 ----
 
+ * Add `Encoding\ResponseEncoder::encodeUntrusted()`, wrapping a payload under an `untrusted_data` key alongside a `_security_notice`, so tool responses carrying data captured from the inspected application are explicitly marked as data rather than instructions
  * Change skill installation to copy skills into `.agents/skills/mate-<name>/` (rewriting the frontmatter name to the installed name) with relative `.claude/skills/` mirror symlinks, instead of symlinking into `vendor/`; the mirror falls back to a copy where symlinks are unavailable
  * Change `skills:install` into an idempotent reconciler that rebuilds both generated folders from source or user override on every run and prunes skills of removed or disabled extensions; `discover` runs it automatically
  * Add all per-skill state to `mate/extensions.php`: the user-editable `enabled` and `mode` (`managed`|`override`) plus the machine-managed `state`, `source`, `source_hash`, `hash` and `targets`
