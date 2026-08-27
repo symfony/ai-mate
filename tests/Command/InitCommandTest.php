@@ -16,6 +16,7 @@ use Psr\Log\NullLogger;
 use Symfony\AI\Mate\Agent\AgentInstructionsAggregator;
 use Symfony\AI\Mate\Agent\AgentInstructionsMaterializer;
 use Symfony\AI\Mate\Command\InitCommand;
+use Symfony\AI\Mate\Runtime\InvocationPhpVersionProbe;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -153,6 +154,82 @@ final class InitCommandTest extends TestCase
         );
     }
 
+    public function testDoesNotProbeWhenTheInvocationIsTheBareBinary()
+    {
+        $probe = new InvocationPhpVersionProbe(null, function (array $command): string {
+            $this->fail('The bare binary runs on the host directly; it must not be probed.');
+        });
+
+        $command = $this->createCommand($probe);
+        $tester = new CommandTester($command);
+
+        $tester->setInputs(['vendor/bin/mate']);
+        $tester->execute([]);
+
+        $config = file_get_contents($this->tempDir.'/mate/config.php');
+        $this->assertIsString($config);
+        $this->assertStringContainsString(
+            "'".\PHP_MAJOR_VERSION.'.'.\PHP_MINOR_VERSION."'",
+            $config,
+        );
+    }
+
+    /**
+     * A wrapped invocation runs under whatever PHP the wrapper routes to, which may differ
+     * from the host process running `mate init`; a working probe must pin that real version.
+     */
+    public function testWrappedInvocationWithAWorkingProbeUsesTheDetectedPhpVersion()
+    {
+        $probe = new InvocationPhpVersionProbe(null, static function (array $command): string {
+            return 'MATE_PHP_VERSION=7.4';
+        });
+
+        $command = $this->createCommand($probe);
+        $tester = new CommandTester($command);
+
+        $tester->setInputs(['ddev exec vendor/bin/mate']);
+        $tester->execute([]);
+
+        $this->assertSame(Command::SUCCESS, $tester->getStatusCode());
+
+        $config = file_get_contents($this->tempDir.'/mate/config.php');
+        $this->assertIsString($config);
+        $this->assertStringContainsString("'7.4'", $config);
+        $this->assertStringNotContainsString(\PHP_MAJOR_VERSION.'.'.\PHP_MINOR_VERSION, $config);
+        $this->assertStringNotContainsString('Could not determine', $tester->getDisplay());
+    }
+
+    /**
+     * A failed probe must not crash `init` or block file generation: it falls back to the
+     * current process's version, exactly like today, and warns so the developer can fix
+     * "mate.php_version" in mate/config.php by hand if that guess is wrong.
+     */
+    public function testWrappedInvocationWithAFailingProbeFallsBackAndWarns()
+    {
+        $probe = new InvocationPhpVersionProbe(null, static function (array $command): ?string {
+            return null;
+        });
+
+        $command = $this->createCommand($probe);
+        $tester = new CommandTester($command);
+
+        $tester->setInputs(['ddev exec vendor/bin/mate']);
+        $tester->execute([]);
+
+        $this->assertSame(Command::SUCCESS, $tester->getStatusCode());
+
+        $config = file_get_contents($this->tempDir.'/mate/config.php');
+        $this->assertIsString($config);
+        $this->assertStringContainsString(
+            "'".\PHP_MAJOR_VERSION.'.'.\PHP_MINOR_VERSION."'",
+            $config,
+        );
+
+        $display = $tester->getDisplay();
+        $this->assertStringContainsString('Could not determine', $display);
+        $this->assertStringContainsString('ddev exec vendor/bin/mate', $display);
+    }
+
     /**
      * The managed AGENTS.md block promises one command; the file it points at must not name
      * another one until `discover` happens to run.
@@ -277,13 +354,21 @@ final class InitCommandTest extends TestCase
         $this->assertSame(0640, fileperms($this->tempDir.'/mate/config.php') & 0777);
     }
 
-    private function createCommand(): InitCommand
+    /**
+     * The default probe is inert on purpose. A real one would run the wrapper from the test's
+     * inputs, so the suite would shell out to whatever `ddev`, `symfony` or `docker` happens to be
+     * installed, in the developer's current directory. Tests that care about probing pass their
+     * own runner.
+     */
+    private function createCommand(?InvocationPhpVersionProbe $phpVersionProbe = null): InitCommand
     {
         $logger = new NullLogger();
         $aggregator = new AgentInstructionsAggregator($this->tempDir, [], $logger);
         $materializer = new AgentInstructionsMaterializer($this->tempDir, $aggregator, $logger);
 
-        return new InitCommand($this->tempDir, $materializer);
+        $probe = $phpVersionProbe ?? new InvocationPhpVersionProbe(null, static fn (array $command): ?string => null);
+
+        return new InitCommand($this->tempDir, $materializer, $probe);
     }
 
     private function removeDirectory(string $dir): void
