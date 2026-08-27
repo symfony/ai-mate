@@ -18,7 +18,7 @@ return static function (ContainerConfigurator $container): void {
 
         // Override default parameters here
         // ->set('mate.cache_dir', sys_get_temp_dir().'/mate')
-        // ->set('mate.env_file', ['.env']) // This will load mate/.env and mate/.env.local
+        // ->set('mate.env_file', '.env') // Loads the project's own .env and .env.local
     ;
 
     $container->services()
