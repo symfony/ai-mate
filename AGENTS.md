@@ -103,8 +103,10 @@ are copied, never symlinked into `vendor/`, so the installed content is readable
 All skill state lives in `mate/extensions.php`: `enabled` and `mode` (`managed`|`override`) are
 user-editable, while `state`, `source`, `source_hash`, `hash` and `targets` are written by the
 installer and rewritten on every run. `skills:list` shows the overview, `skills:validate` checks the
-generated folders against the record, and `skills:prune` removes leftover `mate-*` folders. The core
-package ships a built-in `system-information` skill.
+generated folders against the record, and `skills:prune` removes leftover `mate-*` folders. A skill
+lives with the extension whose tools it drives: the core package ships `php-environment-check` and
+`system-information`, the Symfony bridge the profiler, triage and service skills, and the Monolog
+bridge the log investigation one.
 
 ### Extension Exclusion
 
