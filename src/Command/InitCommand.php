@@ -14,6 +14,7 @@ namespace Symfony\AI\Mate\Command;
 use HelgeSverre\Toon\Toon;
 use Symfony\AI\Mate\Agent\AgentInstructionsMaterializer;
 use Symfony\AI\Mate\Exception\FileWriteException;
+use Symfony\AI\Mate\Runtime\InvocationPhpVersionProbe;
 use Symfony\AI\Mate\Service\FilePermissions;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -50,6 +51,7 @@ class InitCommand extends Command
     public function __construct(
         private string $rootDir,
         private AgentInstructionsMaterializer $instructionsMaterializer,
+        private InvocationPhpVersionProbe $phpVersionProbe,
     ) {
         parent::__construct(self::getDefaultName());
     }
@@ -76,6 +78,26 @@ class InitCommand extends Command
 
         $this->invocation = $this->askInvocation($io);
         $this->phpVersion = \PHP_MAJOR_VERSION.'.'.\PHP_MINOR_VERSION;
+
+        if ($this->phpVersionProbe->isWrapped($this->invocation)) {
+            $io->text(\sprintf('Asking "%s" which PHP it runs...', $this->invocation));
+
+            $detectedVersion = $this->phpVersionProbe->detect($this->invocation);
+
+            if (null !== $detectedVersion) {
+                $this->phpVersion = $detectedVersion;
+            } else {
+                $failure = $this->phpVersionProbe->lastFailure();
+
+                $io->warning(\sprintf(
+                    'Could not determine which PHP version "%s" actually runs%s. Pinned "mate.php_version" to the current process\'s PHP "%s" instead; if that is not what "%s" runs, edit "mate.php_version" in mate/config.php by hand.',
+                    $this->invocation,
+                    null === $failure || '' === $failure ? '' : ' ('.$failure.')',
+                    $this->phpVersion,
+                    $this->invocation,
+                ));
+            }
+        }
 
         $mateDir = $this->rootDir.'/mate';
         if (!is_dir($mateDir)) {

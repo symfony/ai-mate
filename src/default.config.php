@@ -40,6 +40,7 @@ use Symfony\AI\Mate\Invocation\ArgumentCaster;
 use Symfony\AI\Mate\Invocation\HandlerInvoker;
 use Symfony\AI\Mate\Invocation\ResourceReader;
 use Symfony\AI\Mate\Invocation\ToolInvoker;
+use Symfony\AI\Mate\Runtime\InvocationPhpVersionProbe;
 use Symfony\AI\Mate\Runtime\PhpVersionGuard;
 use Symfony\AI\Mate\Service\ExtensionConfigSynchronizer;
 use Symfony\AI\Mate\Service\Logger;
@@ -110,6 +111,9 @@ return static function (ContainerConfigurator $container): void {
         ->set(PhpVersionGuard::class)
             ->public()
             ->arg('$expectedVersion', '%mate.php_version%')
+
+        ->set(InvocationPhpVersionProbe::class)
+            ->arg('$workingDirectory', '%mate.root_dir%')
 
         // Native discovery pipeline (attribute + reflection based)
         ->set(DocBlockParser::class)
