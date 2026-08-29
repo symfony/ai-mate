@@ -41,6 +41,14 @@ final class SkillInstaller
     public const CLAUDE_SKILLS_DIR = '.claude/skills';
     public const OVERRIDE_SKILLS_DIR = 'mate/skills';
 
+    /**
+     * User-owned intent of skills whose declaring package changed within the current run, keyed by
+     * skill name, so it can be carried onto the entry the new package gets.
+     *
+     * @var array<string, array{enabled: bool, mode: 'managed'|'override'}>
+     */
+    private array $adopted = [];
+
     public function __construct(
         private string $rootDir,
         private SkillStateRepository $repository,
@@ -239,11 +247,22 @@ final class SkillInstaller
      */
     private function dropVanished(array $config, array $discovered, bool $dryRun): array
     {
+        $this->adopted = [];
         $removed = [];
         foreach ($config as $package => $entry) {
             foreach ($entry['skills'] ?? [] as $name => $state) {
                 if (isset($discovered[$package][$name])) {
                     continue;
+                }
+
+                // A skill that moved to another package is the same skill to the user, so the
+                // half of the entry they own follows it. Dropping the entry outright would
+                // silently re-enable a skill they disabled, or take back one they overrode.
+                if ($this->isDeclaredElsewhere($discovered, $package, $name)) {
+                    $this->adopted[$name] = [
+                        'enabled' => $state['enabled'] ?? true,
+                        'mode' => $state['mode'] ?? 'managed',
+                    ];
                 }
 
                 if ($this->removeTargets('mate-'.$name, $state['targets'] ?? [], $dryRun)) {
@@ -262,6 +281,24 @@ final class SkillInstaller
     }
 
     /**
+     * @param array<string, array<string, DiscoveredSkill>> $discovered
+     */
+    private function isDeclaredElsewhere(array $discovered, string $package, string $name): bool
+    {
+        foreach ($discovered as $candidate => $skills) {
+            if ($candidate === $package) {
+                continue;
+            }
+
+            if (isset($skills[$name])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param ExtensionConfigMap $config
      *
      * @return ExtensionConfigMap
@@ -273,7 +310,8 @@ final class SkillInstaller
         }
 
         if (!isset($config[$skill->package]['skills'][$skill->originalName])) {
-            $config[$skill->package]['skills'][$skill->originalName] = ['enabled' => true, 'mode' => 'managed'];
+            $config[$skill->package]['skills'][$skill->originalName] = $this->adopted[$skill->originalName]
+                ?? ['enabled' => true, 'mode' => 'managed'];
         }
 
         return $config;

@@ -275,6 +275,49 @@ final class SkillInstallerTest extends TestCase
     }
 
     /**
+     * A skill that changes hands stays the same skill to the user, so the half of the entry they
+     * own has to follow it. Otherwise moving a skill into the extension that declares its tools
+     * would quietly re-enable one the user had disabled.
+     */
+    public function testMovingASkillToAnotherPackageKeepsTheUsersIntent()
+    {
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-a/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
+        $this->installer()->install($this->discover());
+
+        $repository = new SkillStateRepository($this->rootDir);
+        $config = $repository->read();
+        $config['vendor/pkg-a']['skills']['system-information']['enabled'] = false;
+        $repository->write($config);
+        $this->installer()->install($this->discover());
+
+        $this->assertDirectoryDoesNotExist($this->rootDir.'/.agents/skills/mate-system-information');
+
+        // The skill now ships from another package, as it does when it moves to the bridge that
+        // declares its tools.
+        mkdir($this->rootDir.'/vendor/vendor/pkg-b', 0777, true);
+        rename($this->rootDir.'/vendor/vendor/pkg-a/skills', $this->rootDir.'/vendor/vendor/pkg-b/skills');
+
+        $result = $this->installer()->install($this->discoverFromPkgB());
+
+        $this->assertSame([], $result->installed, 'A skill the user disabled must not come back because its package changed.');
+        $this->assertDirectoryDoesNotExist($this->rootDir.'/.agents/skills/mate-system-information');
+
+        // A fresh repository: read() caches, so the instance used above still holds the old state.
+        $config = (new SkillStateRepository($this->rootDir))->read();
+        $this->assertArrayNotHasKey('skills', $config['vendor/pkg-a']);
+        $this->assertFalse($config['vendor/pkg-b']['skills']['system-information']['enabled']);
+    }
+
+    public function testASkillFromANewPackageIsEnabledByDefault()
+    {
+        $this->createSkill($this->rootDir.'/vendor/vendor/pkg-b/skills', 'system-information', 'Inspect the runtime environment when diagnosing a version-specific problem.');
+
+        $result = $this->installer()->install($this->discoverFromPkgB());
+
+        $this->assertSame(['mate-system-information'], $result->installed);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function state(string $package, string $name): array
@@ -293,6 +336,18 @@ final class SkillInstallerTest extends TestCase
 
         return $discovery->discover([
             'vendor/pkg-a' => ['dirs' => [], 'includes' => [], 'skills' => ['vendor/vendor/pkg-a/skills']],
+        ]);
+    }
+
+    /**
+     * @return list<DiscoveredSkill>
+     */
+    private function discoverFromPkgB(): array
+    {
+        $discovery = new SkillDiscovery($this->rootDir, new SkillFrontmatter(), new NullLogger());
+
+        return $discovery->discover([
+            'vendor/pkg-b' => ['dirs' => [], 'includes' => [], 'skills' => ['vendor/vendor/pkg-b/skills']],
         ]);
     }
 

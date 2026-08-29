@@ -30,7 +30,18 @@ use Symfony\Component\Finder\Finder;
 final class SkillReferenceIntegrityTest extends TestCase
 {
     private const SRC_DIR = __DIR__.'/../src';
-    private const SKILLS_DIR = __DIR__.'/../skills';
+
+    /**
+     * Every directory a shipped skill can live in: the core package's own, plus one per bridge,
+     * because a skill ships with the extension whose tools it drives.
+     *
+     * @var list<string>
+     */
+    private const SKILLS_DIRS = [
+        __DIR__.'/../skills',
+        __DIR__.'/../src/Bridge/Symfony/skills',
+        __DIR__.'/../src/Bridge/Monolog/skills',
+    ];
 
     /**
      * Tools that deliberately carry no workflow prose. Leaving a tool out has to be a
@@ -40,6 +51,32 @@ final class SkillReferenceIntegrityTest extends TestCase
      * @var list<string>
      */
     private const TOOLS_WITHOUT_GUIDANCE = [];
+
+    /**
+     * A skill is only useful where its tools exist. Shipping one from a package that does not
+     * declare them installs a workflow the project cannot follow: `symfony/ai-mate` alone has a
+     * single tool, and removing a bridge leaves its skill behind pointing at tools that are gone.
+     * Whatever a skill tells an agent to run must therefore come from the skill's own package.
+     */
+    #[DataProvider('skillFileProvider')]
+    public function testSkillsShipWithThePackageThatDeclaresTheirTools(string $dir, string $file)
+    {
+        $ownTools = $this->toolNamesIn($this->packageRootFor($dir));
+        $violations = [];
+
+        preg_match_all('/tools:call\s+([a-z0-9][a-z0-9-]*)/', (string) file_get_contents($file), $calls);
+        foreach (array_unique($calls[1]) as $name) {
+            if (!\in_array($name, $ownTools, true)) {
+                $violations[] = $name;
+            }
+        }
+
+        $this->assertSame([], $violations, \sprintf(
+            'Skill "%s" runs tools its own package does not declare: %s. Move the skill to the package that declares them.',
+            basename($dir),
+            implode(', ', $violations)
+        ));
+    }
 
     public function testSourceScanFindsCapabilities()
     {
@@ -135,11 +172,13 @@ final class SkillReferenceIntegrityTest extends TestCase
      */
     public static function skillFileProvider(): iterable
     {
-        $dirs = glob(self::SKILLS_DIR.'/*', \GLOB_ONLYDIR) ?: [];
-        foreach ($dirs as $dir) {
-            $file = $dir.'/SKILL.md';
-            if (is_file($file)) {
-                yield basename($dir) => [$dir, $file];
+        foreach (self::SKILLS_DIRS as $skillsDir) {
+            $dirs = glob($skillsDir.'/*', \GLOB_ONLYDIR) ?: [];
+            foreach ($dirs as $dir) {
+                $file = $dir.'/SKILL.md';
+                if (is_file($file)) {
+                    yield basename($dir) => [$dir, $file];
+                }
             }
         }
     }
@@ -154,7 +193,7 @@ final class SkillReferenceIntegrityTest extends TestCase
     {
         $documented = '';
 
-        $finder = (new Finder())->files()->in(self::SKILLS_DIR)->name('SKILL.md');
+        $finder = (new Finder())->files()->in(self::SKILLS_DIRS)->name('SKILL.md');
         foreach ($finder as $file) {
             $documented .= $file->getContents();
         }
@@ -250,6 +289,41 @@ final class SkillReferenceIntegrityTest extends TestCase
         foreach ($finder as $file) {
             yield $file->getContents();
         }
+    }
+
+    /**
+     * The directory whose composer.json declares the skill: the bridge it sits in, or the core
+     * package for everything else.
+     */
+    private function packageRootFor(string $skillDir): string
+    {
+        if (1 === preg_match('#^(.*/src/Bridge/[^/]+)/skills/#', $skillDir.'/', $m)) {
+            return $m[1];
+        }
+
+        return self::SRC_DIR;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function toolNamesIn(string $root): array
+    {
+        $finder = (new Finder())->files()->in($root)->name('*.php');
+        // The core package's sources contain the bridges; their tools belong to them, not to it.
+        if (self::SRC_DIR === $root) {
+            $finder->notPath('Bridge');
+        }
+
+        $names = [];
+        foreach ($finder as $file) {
+            preg_match_all("/#\\[MateTool\\(name:\\s*'([^']+)'/", $file->getContents(), $m);
+            foreach ($m[1] as $name) {
+                $names[] = $name;
+            }
+        }
+
+        return array_values(array_unique($names));
     }
 
     private function templateRegex(string $template): string
