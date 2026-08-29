@@ -45,14 +45,26 @@ class InitCommand extends Command
 
     private const BINARY = 'vendor/bin/mate';
 
-    private string $invocation = self::BINARY;
-    private string $phpVersion = '';
+    private string $invocation;
+
+    /**
+     * Null means no version is pinned, which is a project's choice and not a missing value: the
+     * generated instructions promise the interpreter check only where it is actually on.
+     */
+    private ?string $phpVersion;
 
     public function __construct(
         private string $rootDir,
         private AgentInstructionsMaterializer $instructionsMaterializer,
         private InvocationPhpVersionProbe $phpVersionProbe,
+        string $invocation = self::BINARY,
+        ?string $pinnedPhpVersion = null,
     ) {
+        // Seeded from the project's own parameters, so a run that keeps mate/config.php writes the
+        // command and version that file configures rather than the template defaults.
+        $this->invocation = $invocation;
+        $this->phpVersion = $pinnedPhpVersion;
+
         parent::__construct(self::getDefaultName());
     }
 
@@ -76,27 +88,11 @@ class InitCommand extends Command
 
         $actions = [];
 
-        $this->invocation = $this->askInvocation($io);
-        $this->phpVersion = \PHP_MAJOR_VERSION.'.'.\PHP_MINOR_VERSION;
-
-        if ($this->phpVersionProbe->isWrapped($this->invocation)) {
-            $io->text(\sprintf('Asking "%s" which PHP it runs...', $this->invocation));
-
-            $detectedVersion = $this->phpVersionProbe->detect($this->invocation);
-
-            if (null !== $detectedVersion) {
-                $this->phpVersion = $detectedVersion;
-            } else {
-                $failure = $this->phpVersionProbe->lastFailure();
-
-                $io->warning(\sprintf(
-                    'Could not determine which PHP version "%s" actually runs%s. Pinned "mate.php_version" to the current process\'s PHP "%s" instead; if that is not what "%s" runs, edit "mate.php_version" in mate/config.php by hand.',
-                    $this->invocation,
-                    null === $failure || '' === $failure ? '' : ' ('.$failure.')',
-                    $this->phpVersion,
-                    $this->invocation,
-                ));
-            }
+        // Asked here for a fresh project, and again below if an existing mate/config.php is about
+        // to be replaced. A run that keeps the file must not ask: the answer would be discarded
+        // with the file, leaving AGENTS.md promising a command the project does not configure.
+        if (!file_exists($this->rootDir.'/mate/config.php')) {
+            $this->determineInvocation($io);
         }
 
         $mateDir = $this->rootDir.'/mate';
@@ -119,6 +115,10 @@ class InitCommand extends Command
                 $this->postCopyTemplateAction($file, $fullPath);
                 $actions[] = ['✓', 'Created', $file];
             } elseif ($io->confirm(\sprintf('<question>%s already exists. Replace it with the template, discarding its current content?</question>', $fullPath), false)) {
+                if ('mate/config.php' === $file) {
+                    $this->determineInvocation($io);
+                }
+
                 unlink($fullPath);
                 $this->copyTemplate($file, $fullPath);
                 $this->postCopyTemplateAction($file, $fullPath);
@@ -140,7 +140,7 @@ class InitCommand extends Command
         $composerActions = $this->updateComposerJson();
         $actions = array_merge($actions, $composerActions);
 
-        // The container was built before mate/config.php existed, so hand the answer in directly.
+        // The container was built before mate/config.php existed, so hand the values in directly.
         $materializationResult = $this->instructionsMaterializer
             ->withInvocation($this->invocation, $this->phpVersion)
             ->synchronizeFromCurrentInstructionsFile();
@@ -202,6 +202,41 @@ class InitCommand extends Command
     }
 
     /**
+     * Asks for the invocation and pins the PHP version behind it. Called only where the answer
+     * reaches mate/config.php, so that the prompt, the probe and the generated instructions never
+     * describe a command the project does not configure.
+     */
+    private function determineInvocation(SymfonyStyle $io): void
+    {
+        $this->invocation = $this->askInvocation($io);
+        $this->phpVersion = \PHP_MAJOR_VERSION.'.'.\PHP_MINOR_VERSION;
+
+        if (!$this->phpVersionProbe->isWrapped($this->invocation)) {
+            return;
+        }
+
+        $io->text(\sprintf('Asking "%s" which PHP it runs...', $this->invocation));
+
+        $detectedVersion = $this->phpVersionProbe->detect($this->invocation);
+
+        if (null !== $detectedVersion) {
+            $this->phpVersion = $detectedVersion;
+
+            return;
+        }
+
+        $failure = $this->phpVersionProbe->lastFailure();
+
+        $io->warning(\sprintf(
+            'Could not determine which PHP version "%s" actually runs%s. Pinned "mate.php_version" to the current process\'s PHP "%s" instead; if that is not what "%s" runs, edit "mate.php_version" in mate/config.php by hand.',
+            $this->invocation,
+            null === $failure || '' === $failure ? '' : ' ('.$failure.')',
+            $this->phpVersion,
+            $this->invocation,
+        ));
+    }
+
+    /**
      * Asks how the coding agent should invoke Mate, defaulting to a container prefix when the
      * project looks containerized. Running Mate on the host of a containerized application
      * reports on the wrong runtime, and extensions may then behave differently too.
@@ -245,9 +280,13 @@ class InitCommand extends Command
             return;
         }
 
+        // The template comments say null turns the check off, so an unknown version has to render
+        // as that rather than as an empty string no guard could ever match.
+        $version = null === $this->phpVersion ? 'null' : "'".$this->phpVersion."'";
+
         $contents = str_replace(
             ['##MATE_INVOCATION##', "'##MATE_PHP_VERSION##'"],
-            [$this->invocation, "'".$this->phpVersion."'"],
+            [$this->invocation, $version],
             $contents,
         );
 
