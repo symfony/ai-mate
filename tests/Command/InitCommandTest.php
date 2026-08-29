@@ -286,6 +286,122 @@ final class InitCommandTest extends TestCase
         $this->assertStringContainsString("'docker compose exec app php bin/mate'", $config);
     }
 
+    /**
+     * Re-running `init` after an upgrade is the natural thing to try, and the only safe answer to
+     * the overwrite prompt is "no", because the template would discard the services the user
+     * registered. AGENTS.md is the file the agent reads, so it has to keep naming the command the
+     * kept config.php configures rather than the answer that went nowhere.
+     */
+    public function testKeepingTheConfigKeepsItsInvocationInTheInstructions()
+    {
+        $this->scaffoldInitializedProject('ddev exec vendor/bin/mate');
+
+        $command = $this->createCommand(null, 'ddev exec vendor/bin/mate');
+        $tester = new CommandTester($command);
+
+        // One "no" per scaffolded file. No invocation prompt: the config stays as it is.
+        $tester->setInputs(['no', 'no', 'no', 'no', 'no']);
+        $tester->execute([]);
+
+        $agents = file_get_contents($this->tempDir.'/AGENTS.md');
+        $this->assertIsString($agents);
+        $this->assertStringContainsString('ddev exec vendor/bin/mate', $agents);
+
+        $config = file_get_contents($this->tempDir.'/mate/config.php');
+        $this->assertIsString($config);
+        $this->assertStringContainsString('a service the user registered themselves', $config);
+    }
+
+    /**
+     * `mate.php_version` is nullable on purpose: null turns the interpreter check off. Passing the
+     * PHP that happens to run `init` in its place would make the generated instructions promise a
+     * refusal nothing enforces, which is precisely what an upgraded project without the parameter
+     * must not be told.
+     */
+    public function testAProjectWithoutAPinnedVersionIsNotPromisedTheInterpreterCheck()
+    {
+        $this->scaffoldInitializedProject('vendor/bin/mate');
+
+        $command = $this->createCommand(null, 'vendor/bin/mate', null);
+        $tester = new CommandTester($command);
+
+        $tester->setInputs(['no', 'no', 'no', 'no', 'no']);
+        $tester->execute([]);
+
+        $agents = file_get_contents($this->tempDir.'/AGENTS.md');
+        $this->assertIsString($agents);
+        $this->assertStringNotContainsString('refuses to start', $agents);
+    }
+
+    public function testAProjectWithAPinnedVersionIsPromisedTheInterpreterCheck()
+    {
+        $this->scaffoldInitializedProject('vendor/bin/mate');
+
+        $command = $this->createCommand(null, 'vendor/bin/mate', '8.3');
+        $tester = new CommandTester($command);
+
+        $tester->setInputs(['no', 'no', 'no', 'no', 'no']);
+        $tester->execute([]);
+
+        $agents = file_get_contents($this->tempDir.'/AGENTS.md');
+        $this->assertIsString($agents);
+        $this->assertStringContainsString('refuses to start', $agents);
+    }
+
+    public function testDoesNotAskForAnInvocationItWouldDiscard()
+    {
+        $this->scaffoldInitializedProject('ddev exec vendor/bin/mate');
+
+        $command = $this->createCommand(null, 'ddev exec vendor/bin/mate');
+        $tester = new CommandTester($command);
+
+        $tester->setInputs(['no', 'no', 'no', 'no', 'no']);
+        $tester->execute([]);
+
+        $this->assertStringNotContainsString('Which command should your coding agent use', $tester->getDisplay());
+    }
+
+    public function testReplacingTheConfigAsksForTheInvocationAgain()
+    {
+        $this->scaffoldInitializedProject('ddev exec vendor/bin/mate');
+
+        $command = $this->createCommand(null, 'ddev exec vendor/bin/mate');
+        $tester = new CommandTester($command);
+
+        // extensions.php: no, config.php: yes, then the invocation, then the remaining files.
+        $tester->setInputs(['no', 'yes', 'symfony php', 'no', 'no', 'no']);
+        $tester->execute([]);
+
+        $config = file_get_contents($this->tempDir.'/mate/config.php');
+        $this->assertIsString($config);
+        $this->assertStringContainsString("'symfony php vendor/bin/mate'", $config);
+
+        $agents = file_get_contents($this->tempDir.'/AGENTS.md');
+        $this->assertIsString($agents);
+        $this->assertStringContainsString('symfony php vendor/bin/mate', $agents);
+    }
+
+    /**
+     * The instructions carry the invocation too, so replacing them while keeping the config must
+     * not fall back to the template default either.
+     */
+    public function testReplacingOnlyTheInstructionsKeepsTheConfiguredInvocation()
+    {
+        $this->scaffoldInitializedProject('ddev exec vendor/bin/mate');
+
+        $command = $this->createCommand(null, 'ddev exec vendor/bin/mate');
+        $tester = new CommandTester($command);
+
+        // Everything declined except AGENT_INSTRUCTIONS.md, the last of the five.
+        $tester->setInputs(['no', 'no', 'no', 'no', 'yes']);
+        $tester->execute([]);
+
+        $instructions = file_get_contents($this->tempDir.'/mate/AGENT_INSTRUCTIONS.md');
+        $this->assertIsString($instructions);
+        $this->assertStringNotContainsString('##MATE_INVOCATION##', $instructions);
+        $this->assertStringContainsString('ddev exec vendor/bin/mate tools:list', $instructions);
+    }
+
     public function testDefaultsTheInvocationToThePlainBinary()
     {
         $command = $this->createCommand();
@@ -359,16 +475,35 @@ final class InitCommandTest extends TestCase
      * inputs, so the suite would shell out to whatever `ddev`, `symfony` or `docker` happens to be
      * installed, in the developer's current directory. Tests that care about probing pass their
      * own runner.
+     *
+     * `$invocation` and `$pinnedPhpVersion` stand for what the container loaded from an existing
+     * `mate/config.php`, which is what a re-run in an initialized project sees.
      */
-    private function createCommand(?InvocationPhpVersionProbe $phpVersionProbe = null): InitCommand
-    {
+    private function createCommand(
+        ?InvocationPhpVersionProbe $phpVersionProbe = null,
+        string $invocation = 'vendor/bin/mate',
+        ?string $pinnedPhpVersion = null,
+    ): InitCommand {
         $logger = new NullLogger();
         $aggregator = new AgentInstructionsAggregator($this->tempDir, [], $logger);
-        $materializer = new AgentInstructionsMaterializer($this->tempDir, $aggregator, $logger);
+        $materializer = new AgentInstructionsMaterializer($this->tempDir, $aggregator, $logger, $invocation, $pinnedPhpVersion);
 
         $probe = $phpVersionProbe ?? new InvocationPhpVersionProbe(null, static fn (array $command): ?string => null);
 
-        return new InitCommand($this->tempDir, $materializer, $probe);
+        return new InitCommand($this->tempDir, $materializer, $probe, $invocation, $pinnedPhpVersion);
+    }
+
+    /**
+     * Writes the scaffolded files a re-run finds, with the invocation the project configured.
+     */
+    private function scaffoldInitializedProject(string $invocation): void
+    {
+        mkdir($this->tempDir.'/mate', 0755, true);
+        file_put_contents($this->tempDir.'/mate/config.php', "<?php\n\n// \$container->parameters()->set('mate.invocation', '".$invocation."');\n// a service the user registered themselves\n");
+        file_put_contents($this->tempDir.'/mate/extensions.php', '<?php return [];');
+        file_put_contents($this->tempDir.'/mate/.env', '');
+        file_put_contents($this->tempDir.'/mate/.gitignore', '');
+        file_put_contents($this->tempDir.'/mate/AGENT_INSTRUCTIONS.md', 'Run `'.$invocation.' tools:list`.');
     }
 
     private function removeDirectory(string $dir): void

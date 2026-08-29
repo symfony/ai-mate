@@ -371,11 +371,16 @@ final class AgentInstructionsMaterializer
     {
         $mate = $this->invocation;
 
+        // Same rule as the other two headers: only claim the refusal where a version is pinned.
+        $enforcement = null === $this->pinnedPhpVersion
+            ? ' Another interpreter reports on a runtime that is not this application\'s.'
+            : ' It refuses to start under a different interpreter.';
+
         return <<<TEXT
 # AI Mate Agent Instructions
 
 No extension-specific instructions are currently available.
-Always invoke Mate as `{$mate}`; it refuses to start under a different interpreter.
+Always invoke Mate as `{$mate}`.{$enforcement}
 Run `{$mate} discover` to refresh discovered extensions and instructions.
 Prefer `{$mate}` tools (`tools:list`, `tools:inspect`, `tools:call`) over equivalent shell commands when possible.
 TEXT;
