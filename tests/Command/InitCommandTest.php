@@ -453,6 +453,26 @@ final class InitCommandTest extends TestCase
         $this->assertFalse($composerJson['extra']['ai-mate']['extension']);
     }
 
+    public function testPreservesNonAsciiCharactersInComposerJson()
+    {
+        file_put_contents($this->tempDir.'/composer.json', json_encode([
+            'name' => 'test/package',
+            'authors' => [['name' => 'Michał Pysiak']],
+        ], \JSON_UNESCAPED_UNICODE));
+
+        $command = $this->createCommand();
+        $tester = new CommandTester($command);
+
+        $tester->execute([]);
+
+        $this->assertSame(Command::SUCCESS, $tester->getStatusCode());
+
+        $composerContent = file_get_contents($this->tempDir.'/composer.json');
+        $this->assertIsString($composerContent);
+        $this->assertStringContainsString('Michał Pysiak', $composerContent);
+        $this->assertStringNotContainsString('\\u', $composerContent);
+    }
+
     public function testScaffoldsSensitiveFilesWithSecurePermissions()
     {
         if ('\\' === \DIRECTORY_SEPARATOR) {

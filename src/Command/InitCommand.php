@@ -353,7 +353,7 @@ class InitCommand extends Command
         if ($modified) {
             file_put_contents(
                 $composerJsonPath,
-                json_encode($composerJson, \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES)."\n"
+                json_encode($composerJson, \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE)."\n"
             );
             $actions[] = ['✓', 'Updated', 'composer.json'];
         }
