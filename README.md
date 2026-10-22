@@ -23,8 +23,8 @@ vendor/bin/mate tools:call symfony-profiler-list --limit=1
 vendor/bin/mate resources:read symfony-profiler://profile/<token>
 ```
 
-Add `--format=json` to the `tools:*`, `resources:read`, `debug:*`, `skills:list` and
-`skills:validate` commands for machine-readable output.
+Add `--format=json` to the `tools:*`, `resources:read`, `debug:*`, `skills:install`,
+`skills:list` and `skills:validate` commands for machine-readable output.
 
 The package ships with the `symfony/ai-mate-composer-plugin`, which automatically
 refreshes Mate extension discovery after `composer install` and `composer update` once the
